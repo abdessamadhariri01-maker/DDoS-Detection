@@ -1,163 +1,118 @@
-<div align="center">
-
 # DDoS Detection System
 
-### ML-Powered DDoS Attack Detection using Random Forest & SVM
-
-<img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
-<img src="https://img.shields.io/badge/StreamLit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
-<img src="https://img.shields.io/badge/Scikit--learn-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white" />
-<img src="https://img.shields.io/badge/CIC--DDoS2019-77_Features-blue?style=for-the-badge" />
-
-**Real-time network traffic classification as BENIGN or DDoS with an interactive cybersecurity dashboard.**
-
-</div>
-
----
-
-## Overview
-
-This project implements a complete **DDoS detection system** using Machine Learning. It features a **FastAPI backend** serving pre-trained Random Forest and SVM models, and a **Streamlit frontend** with a real-time cybersecurity-themed dashboard.
-
-The models are trained on the **CIC-DDoS2019** dataset with **77 network flow features**, enabling accurate binary classification of network traffic.
-
----
+Real-time DDoS attack detection using Random Forest and SVM classifiers trained on the CIC-DDoS2019 dataset. The system exposes a FastAPI backend for model inference and a Streamlit dashboard for interactive traffic analysis.
 
 ## Architecture
 
+The application follows a client-server architecture with a clear separation between ML inference and presentation:
+
 ```
-ddos-detection/
+Streamlit Dashboard (frontend/)
+    │
+    ├── Manual Input    → 5 key features → API → aligned to 77 → prediction
+    ├── CSV Upload      → batch rows     → API → aligned to 77 → predictions
+    └── Live Simulation → auto-generated → API → aligned to 77 → predictions
+                                   │
+                            FastAPI (backend/)
+                                   │
+                         ┌─────────┴──────────┐
+                    rf_model.pkl          svm_model.pkl
+                    scaler.pkl
+```
+
+The backend loads pre-trained models at startup and serves predictions through a REST API. The frontend communicates with the API through a thin client wrapper.
+
+## Project Structure
+
+```
+DDoS-Detection/
 ├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI application entry point
-│   │   ├── api/
-│   │   │   ├── routes.py        # REST API endpoints (6 routes)
-│   │   │   └── schemas.py       # Pydantic models & 77 feature columns
-│   │   └── models/
-│   │       ├── predictor.py     # Prediction logic (align, predict, confidence)
-│   │       ├── loader.py        # Model loading with joblib
-│   │       ├── rf_model.pkl     # Trained Random Forest model
-│   │       ├── svm_model.pkl    # Trained SVM model
-│   │       └── scaler.pkl       # StandardScaler for feature normalization
+│   └── app/
+│       ├── main.py              # FastAPI entry point, CORS, startup/shutdown
+│       ├── api/
+│       │   ├── routes.py        # 6 REST endpoints
+│       │   └── schemas.py       # Pydantic models + 77 CIC-DDoS2019 column names
+│       └── models/
+│           ├── predictor.py     # Feature alignment, prediction, confidence scoring
+│           ├── loader.py        # Load .pkl models with joblib
+│           ├── rf_model.pkl     # Trained Random Forest
+│           ├── svm_model.pkl    # Trained SVM
+│           └── scaler.pkl       # Fitted StandardScaler
 ├── frontend/
-│   ├── ddos_dashboard.py        # Streamlit interactive dashboard
-│   └── api_client.py            # Python API client wrapper
+│   ├── ddos_dashboard.py        # Streamlit dashboard (3 detection modes)
+│   └── api_client.py            # API client wrapper
 ├── training/
-│   ├── ddos.csv                 # Training dataset
-│   └── pythonproject (3).ipynb  # Jupyter notebook (model training & evaluation)
+│   ├── ddos.csv                 # CIC-DDoS2019 training data
+│   └── pythonproject (3).ipynb  # Model training & evaluation notebook
 ├── tests/
-│   ├── only_ddos.csv            # DDoS-only test samples
-│   ├── test DDOS.csv            # Mixed test samples
-│   └── test benign.csv          # Benign traffic test samples
+│   ├── only_ddos.csv
+│   ├── test DDOS.csv
+│   └── test benign.csv
 ├── requirements.txt
-└── .gitignore
+└── README.md
 ```
 
----
+## How Prediction Works
 
-## Features
+1. **Input** — The API accepts either 5 key features (simplified mode) or a full 77-feature vector
+2. **Feature Alignment** — In simplified mode, the predictor maps the 5 inputs to the full 77-column schema used during training. Missing columns are set to 0.
+3. **Scaling** — The StandardScaler (fitted on training data) normalizes the input
+4. **Classification** — The selected model (RF or SVM) outputs a binary label: `0` (BENIGN) or `1` (DDoS)
+5. **Confidence** — RF uses `predict_proba` directly; SVM applies a sigmoid function to `decision_function` scores since it doesn't natively support probability estimates
 
-### 3 Detection Modes
-- **Manual Input** — Enter 5 key network features for instant classification
-- **CSV Upload** — Batch analyze up to 500 rows from a CSV file
-- **Live Simulation** — Real-time traffic simulation with auto-injection
+## API Endpoints
 
-### ML Models
-- **Random Forest (RF)** — Ensemble classifier with probability-based confidence scoring
-- **Support Vector Machine (SVM)** — Margin-based classifier with sigmoid confidence mapping
-
-### Dashboard
-- Real-time traffic graphs (packets/sec, bytes/sec) with Plotly
-- DDoS alert banners with animated pulse effects
-- Detection statistics and event history table
-- Export predictions, events, and full 77-feature vectors to CSV
-
-### API Endpoints
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/health` | GET | Check API and model status |
-| `/api/v1/features` | GET | List all 77 feature columns |
+|:---|:---|:---|
+| `/api/v1/health` | GET | API status and loaded model info |
+| `/api/v1/features` | GET | Return the 77 CIC-DDoS2019 feature column names |
 | `/api/v1/predict/manual` | POST | Predict from 5 key features |
-| `/api/v1/predict/row` | POST | Predict from full 77-feature dict |
-| `/api/v1/predict/csv` | POST | Batch prediction from CSV upload |
+| `/api/v1/predict/row` | POST | Predict from a full 77-feature dictionary |
+| `/api/v1/predict/csv` | POST | Batch prediction from uploaded CSV (up to 500 rows) |
 | `/api/v1/stats` | GET | Cumulative detection statistics |
-| `/api/v1/history` | GET | Last N detection results |
+| `/api/v1/history` | GET | Last N detection events |
 
----
+Interactive API documentation is available at `/docs` (Swagger UI) when the server is running.
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend API | FastAPI + Uvicorn |
-| ML Models | Scikit-learn (RandomForestClassifier, SVC) |
-| Feature Scaling | StandardScaler |
-| Frontend | Streamlit |
-| Data Viz | Plotly |
-| Serialization | Joblib / Pickle |
-| Validation | Pydantic |
-| Dataset | CIC-DDoS2019 (77 features) |
-
----
-
-## Getting Started
-
-### Prerequisites
-- Python 3.10+
-- pip
-
-### Installation
+## Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/abdessamadhariri01-maker/DDoS-Detection.git
 cd DDoS-Detection
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Run the Backend
-
+**Start the backend:**
 ```bash
 cd backend
 python -m app.main
-# Server running at http://localhost:8000
-# Interactive docs at http://localhost:8000/docs
+# → http://localhost:8000
+# → API docs: http://localhost:8000/docs
 ```
 
-### Run the Dashboard
-
+**Start the dashboard:**
 ```bash
 cd frontend
 streamlit run ddos_dashboard.py
-# Dashboard opens at http://localhost:8501
+# → http://localhost:8501
 ```
 
----
+## Tech Stack
 
-## How It Works
-
-1. **Feature Extraction** — Network traffic is described by 77 features from CIC-DDoS2019 (Destination Port, Flow Duration, Packet Lengths, IAT stats, TCP Flags, etc.)
-2. **Preprocessing** — Features are aligned to the 77-column schema; missing columns default to 0. The StandardScaler normalizes input data.
-3. **Prediction** — The selected model (RF or SVM) classifies the traffic as `BENIGN` (0) or `DDoS` (1)
-4. **Confidence Scoring** — RF uses `predict_proba`; SVM uses sigmoid mapping on `decision_function`
-5. **Visualization** — Results are displayed on the dashboard with real-time charts and alerts
-
----
+| Component | Technology |
+|:---|:---|
+| Backend framework | FastAPI + Uvicorn |
+| ML models | Scikit-learn (RandomForestClassifier, SVC) |
+| Feature scaling | StandardScaler (joblib) |
+| Frontend | Streamlit |
+| Data visualization | Plotly |
+| Input validation | Pydantic |
+| Dataset | CIC-DDoS2019 — 77 network flow features |
 
 ## Authors
 
-- **[Abdessamad Hariri](https://www.linkedin.com/in/abdessamad-hariri)** — Data Science & ML
-- **Achraf Choukroun** — Data Science & ML
-- **Abdellah Amjoud** — Data Science & ML
+- [Abdessamad Hariri](https://www.linkedin.com/in/abdessamad-hariri)
+- Achraf Choukroun
+- Abdellah Amjoud
 
----
-
-## Acknowledgments
-
-- **CIC-DDoS2019 Dataset** — Canadian Institute for Cybersecurity
-- **Module**: Advanced Python — Faculty of Polydisciplinary, Beni Mellal (USMS)
-
-</div>
+Module: Advanced Python — Faculté Polydisciplinaire de Béni Mellal (USMS)
